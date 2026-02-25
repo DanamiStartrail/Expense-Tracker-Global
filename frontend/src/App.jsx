@@ -1,151 +1,93 @@
-import { useEffect, useState } from 'react'
-import axios from 'axios'
+import { useState } from 'react';
+import axios from 'axios';
+import { Toaster, toast } from 'react-hot-toast';
+import { useTransactions } from './hooks/useTransactions';
+
+// Import Komponen Modular
+import BudgetCard from './components/BudgetCard';
+import TransactionForm from './components/TransactionForm';
+import TransactionList from './components/TransactionList';
+import AnalyticsChart from './components/AnalyticsChart';
+import ExportButton from './components/ExportButton';
 
 function App() {
-  const [transactions, setTransactions] = useState([])
-  const [categories, setCategories] = useState([])
-  const [description, setDescription] = useState('')
-  const [amount, setAmount] = useState('')
-  const [categoryId, setCategoryId] = useState('')
+  const { transactions, categories, fetchTransactions, deleteTransaction, resetAllTransactions } = useTransactions();
   
-  // 1. Fungsi Ambil Data Transaksi (Memanfaatkan JOIN dari Backend)
-  const fetchTransactions = async () => {
+  // State UI
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [timeFilter, setTimeFilter] = useState('semua');
+  const [budget, setBudget] = useState(1000000);
+  const [isEditingBudget, setIsEditingBudget] = useState(false);
+  
+  // --- LOGIKA FILTERING ---
+  const filteredTransactions = transactions.filter(t => {
+    const tDate = new Date(t.date);
+    const now = new Date();
+    const matchSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    let matchTime = true;
+    if (timeFilter === 'hari') matchTime = tDate.toDateString() === now.toDateString();
+    else if (timeFilter === 'bulan') matchTime = tDate.getMonth() === now.getMonth() && tDate.getFullYear() === now.getFullYear();
+    else if (timeFilter === 'tahun') matchTime = tDate.getFullYear() === now.getFullYear();
+    
+    return matchSearch && matchTime;
+  });
+  
+  const totalExpense = filteredTransactions.reduce((acc, curr) => acc + parseInt(curr.amount), 0);
+  
+  const chartData = categories.map(cat => ({
+    name: cat.name,
+    value: filteredTransactions.filter(t => t.category_id === cat.id).reduce((s, t) => s + parseInt(t.amount), 0)
+  })).filter(item => item.value > 0);
+  
+  // --- HANDLER TAMBAH DATA ---
+  const handleAddTransaction = async (e) => {
+    e.preventDefault();
+    if (!description || !amount) return toast.error("Isi data dengan lengkap!");
+    if (parseInt(amount) <= 0) return toast.error("Nominal harus lebih dari 0!");
+    
     try {
-      const response = await axios.get('http://localhost:5000/api/transactions')
-      setTransactions(response.data)
-    } catch (error) {
-      console.error("Gagal mengambil transaksi:", error)
-    }
-  }
-  
-  // 2. Fungsi Ambil Daftar Kategori untuk Dropdown
-  const fetchCategories = async () => {
-    try {
-      const response = await axios.get('http://localhost:5000/api/categories')
-      setCategories(response.data)
-    } catch (error) {
-      console.error("Gagal mengambil kategori:", error)
-    }
-  }
-  
-  // 3. Fungsi Tambah Data
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!description || !amount) return alert("Isi deskripsi dan nominal!")
-      
-      try {
-        await axios.post('http://localhost:5000/api/transactions', {
-          description,
-          amount: parseInt(amount),
-                         user_id: null,
-                         category_id: categoryId || null // Mengirim ID kategori yang dipilih ke database
-        })
-        
-        // Reset form setelah sukses
-        setDescription('')
-        setAmount('')
-        setCategoryId('') 
-        fetchTransactions() // Memperbarui daftar secara otomatis
-      } catch (error) {
-        alert("Gagal menambah data")
-      }
-  }
-  
-  // 4. Fungsi Hapus Data
-  const deleteTransaction = async (id) => {
-    if (window.confirm("Yakin ingin menghapus transaksi ini?")) {
-      try {
-        await axios.delete(`http://localhost:5000/api/transactions/${id}`)
-        fetchTransactions()
-      } catch (error) {
-        alert("Gagal menghapus")
-      }
-    }
-  }
-  
-  // Inisialisasi data saat aplikasi pertama kali dimuat
-  useEffect(() => { 
-    fetchTransactions()
-    fetchCategories()
-  }, [])
-  
-  // Menghitung Total Pengeluaran secara dinamis
-  const totalExpense = transactions.reduce((acc, curr) => acc + parseInt(curr.amount), 0)
+      await axios.post('http://localhost:5000/api/transactions', {
+        description,
+        amount: parseInt(amount),
+                       category_id: categoryId || null
+      });
+      setDescription(''); setAmount(''); setCategoryId('');
+      fetchTransactions();
+      toast.success("Transaksi berhasil dicatat!");
+    } catch (error) { toast.error("Gagal simpan data"); }
+  };
   
   return (
-    <div style={{ padding: '40px', maxWidth: '500px', margin: '0 auto', fontFamily: 'Arial', color: '#fff', backgroundColor: '#2c3e50', minHeight: '100vh' }}>
-    <h1 style={{ textAlign: 'center', marginBottom: '10px' }}>💰 Expense Tracker</h1>
+    <div style={{ minHeight: '100vh', backgroundColor: '#1a252f', padding: '20px', color: '#fff', fontFamily: 'Arial, sans-serif' }}>
+    {/* Container Notifikasi */}
+    <Toaster position="top-right" reverseOrder={false} />
     
-    {/* Kartu Ringkasan Total */}
-    <div style={{ textAlign: 'center', background: '#34495e', padding: '20px', borderRadius: '12px', marginBottom: '30px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-    <p style={{ margin: 0, fontSize: '0.9rem', color: '#bdc3c7' }}>Total Pengeluaran</p>
-    <h2 style={{ margin: '5px 0 0 0', color: '#f1c40f', fontSize: '2rem' }}>
-    Rp {totalExpense.toLocaleString('id-ID')}
-    </h2>
-    </div>
+    <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>💰 Expense Tracker</h1>
     
-    {/* Form Input Transaksi */}
-    <form onSubmit={handleSubmit} style={{ marginBottom: '30px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-    <input 
-    type="text" placeholder="Beli apa hari ini?" 
-    value={description} onChange={(e) => setDescription(e.target.value)}
-    style={{ padding: '12px', borderRadius: '8px', border: 'none', outline: 'none', color: '#333' }}
-    />
-    <input 
-    type="number" placeholder="Nominal (Rp)" 
-    value={amount} onChange={(e) => setAmount(e.target.value)}
-    style={{ padding: '12px', borderRadius: '8px', border: 'none', outline: 'none', color: '#333' }}
-    />
-    
-    {/* Dropdown Pilihan Kategori */}
-    <select 
-    value={categoryId} 
-    onChange={(e) => setCategoryId(e.target.value)}
-    style={{ padding: '12px', borderRadius: '8px', border: 'none', outline: 'none', backgroundColor: '#fff', color: '#333' }}
-    >
-    <option value="">-- Pilih Kategori --</option>
-    {categories.map((cat) => (
-      <option key={cat.id} value={cat.id}>{cat.name}</option>
+    <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '30px' }}>
+    {['semua', 'hari', 'bulan', 'tahun'].map(f => (
+      <button key={f} onClick={() => setTimeFilter(f)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', backgroundColor: timeFilter === f ? '#27ae60' : '#34495e', color: '#fff', fontSize: '0.8rem', fontWeight: 'bold' }}>{f}</button>
     ))}
-    </select>
-    
-    <button type="submit" style={{ padding: '12px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-    Simpan Transaksi
-    </button>
-    </form>
-    
-    <hr style={{ borderColor: '#555', marginBottom: '20px' }} />
-    
-    {/* Daftar Riwayat Transaksi */}
-    <h3>Riwayat Belanja</h3>
-    <ul style={{ listStyle: 'none', padding: 0 }}>
-    {transactions.length === 0 ? (
-      <p style={{ color: '#bdc3c7', textAlign: 'center' }}>Belum ada data.</p>
-    ) : (
-      transactions.map((t) => (
-        <li key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: '#34495e', marginBottom: '8px', borderRadius: '8px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <span style={{ fontSize: '1rem', fontWeight: '500' }}>{t.description}</span>
-        {/* Menampilkan kategori hasil JOIN dari backend */}
-        <span style={{ fontSize: '0.75rem', color: '#bdc3c7', fontStyle: 'italic' }}>
-        Kategori: {t.category_name || 'Umum'}
-        </span>
-        <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#ecf0f1', marginTop: '4px' }}>
-        Rp {parseInt(t.amount).toLocaleString('id-ID')}
-        </span>
-        </div>
-        <button 
-        onClick={() => deleteTransaction(t.id)}
-        style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
-        >
-        Hapus
-        </button>
-        </li>
-      ))
-    )}
-    </ul>
     </div>
-  )
+    
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ flex: '1 1 450px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <BudgetCard total={totalExpense} budget={budget} timeFilter={timeFilter} isOverBudget={totalExpense > budget} isEditingBudget={isEditingBudget} setBudget={setBudget} setIsEditingBudget={setIsEditingBudget} onEditBudget={() => setIsEditingBudget(true)} />
+    <AnalyticsChart chartData={chartData} />
+    <TransactionForm onSubmit={handleAddTransaction} description={description} setDescription={setDescription} amount={amount} setAmount={setAmount} categories={categories} categoryId={categoryId} setCategoryId={setCategoryId} />
+    </div>
+    
+    <div style={{ flex: '1 1 350px', background: '#2c3e50', padding: '20px', borderRadius: '15px', maxHeight: 'fit-content', boxShadow: '0 4px 15px rgba(0,0,0,0.3)' }}>
+    <TransactionList transactions={filteredTransactions} searchTerm={searchTerm} setSearchTerm={setSearchTerm} onDelete={deleteTransaction} />
+    <ExportButton data={filteredTransactions} onReset={resetAllTransactions} />
+    </div>
+    </div>
+    </div>
+  );
 }
 
-export default App
+export default App;
