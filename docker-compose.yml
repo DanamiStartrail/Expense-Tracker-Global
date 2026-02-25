@@ -1,1 +1,16 @@
+services:
+  db:
+    image: docker.io/library/postgres:15-alpine  # <--- Ubah baris ini
+    container_name: expense_tracker_db
+    restart: always
+    environment:
+      - POSTGRES_USER=mandanta
+      - POSTGRES_PASSWORD=kopi_hitam
+      - POSTGRES_DB=expense_tracker_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
+volumes:
+  pgdata:
