@@ -58,7 +58,6 @@ function App() {
   return (
     <div style={{ padding: '40px', maxWidth: '500px', margin: '0 auto', fontFamily: 'Arial', color: '#fff', backgroundColor: '#2c3e50', minHeight: '100vh' }}>
       <h1 style={{ textAlign: 'center', marginBottom: '10px' }}>💰 Expense Tracker</h1>
-      
       {/* Kartu Total Pengeluaran */}
       <div style={{ 
         textAlign: 'center', 
