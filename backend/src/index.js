@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Konfigurasi Database
+// Konfigurasi Database (Gunakan file .env agar aman)
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -18,70 +18,77 @@ const pool = new Pool({
   port: process.env.DB_PORT,
 });
 
-// Cek Koneksi Database
+// Cek Koneksi Database saat startup
 pool.connect((err, client, release) => {
   if (err) {
-    return console.error('Error menyambungkan ke database:', err.stack);
+    return console.error('Gagal koneksi ke database PostgreSQL:', err.stack);
   }
-  console.log('Database terhubung dengan sukses!');
+  console.log('✅ Database PostgreSQL terhubung!');
   release();
 });
 
-// Endpoint Testing
-app.get('/', (req, res) => {
-  res.send('API Expense Tracker Berjalan!');
-});
-
-// Endpoint untuk Menambah Transaksi Baru
-app.post('/api/transactions', async (req, res) => {
-  const { user_id, category_id, amount, description, date } = req.body;
-
+// 1. Ambil Semua Transaksi (Join dengan Kategori)
+app.get('/api/transactions', async (req, res) => {
   try {
     const query = `
-      INSERT INTO transactions (user_id, category_id, amount, description, date)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *;
+    SELECT t.*, c.name as category_name 
+    FROM transactions t 
+    LEFT JOIN categories c ON t.category_id = c.id 
+    ORDER BY t.date DESC
     `;
-    const values = [user_id, category_id, amount, description, date || new Date()];
-    
-    const result = await pool.query(query, values);
-    res.status(201).json({
-      message: "Transaksi berhasil dicatat!",
-      data: result.rows[0]
-    });
+    const result = await pool.query(query);
+    res.json(result.rows);
   } catch (err) {
-    console.error(err.message);
+    res.status(500).json({ error: "Gagal mengambil data transaksi" });
+  }
+});
+
+// 2. Tambah Transaksi Baru
+app.post('/api/transactions', async (req, res) => {
+  const { user_id, category_id, amount, description, date } = req.body;
+  try {
+    const query = `
+    INSERT INTO transactions (user_id, category_id, amount, description, date)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING *;
+    `;
+    const values = [
+      user_id || null, 
+      category_id || null, 
+      amount, 
+      description, 
+      date || new Date()
+    ];
+    const result = await pool.query(query, values);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
     res.status(500).json({ error: "Gagal menyimpan transaksi" });
   }
 });
 
-// Endpoint untuk Menghapus Transaksi
+// 3. Ambil Daftar Kategori (Untuk Dropdown di React)
+app.get('/api/categories', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM categories ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil kategori" });
+  }
+});
+
+// 4. Hapus Transaksi
 app.delete('/api/transactions/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query('DELETE FROM transactions WHERE id = $1', [id]);
-    res.json({ message: "Transaksi berhasil dihapus" });
+    res.json({ message: "Berhasil dihapus" });
   } catch (err) {
     res.status(500).json({ error: "Gagal menghapus data" });
   }
 });
 
-// Endpoint untuk Melihat Semua Transaksi
-app.get('/api/transactions', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT t.*, c.name as category_name 
-      FROM transactions t 
-      LEFT JOIN categories c ON t.category_id = c.id 
-      ORDER BY t.date DESC
-    `);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: "Gagal mengambil data" });
-  }
-});
-
+// Menjalankan Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server Backend menyala di port ${PORT}`);
 });
